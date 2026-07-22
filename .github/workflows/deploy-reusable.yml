@@ -8,9 +8,14 @@ on:
   workflow_call:
     inputs:
       project:
-        description: "Nom du projet = nom de l'image ghcr et du stack sur le VPS"
+        description: "Nom du stack sur le VPS (dossier stacks/<project>). Plusieurs services d'un même monorepo partagent le même project."
         required: true
         type: string
+      image:
+        description: "Nom de l'image ghcr, si différent de project (cas monorepo multi-services). Défaut : project."
+        required: false
+        type: string
+        default: ""
       dockerfile:
         required: false
         type: string
@@ -38,6 +43,10 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      - name: Résout le nom d'image
+        id: vars
+        run: echo "image=${{ inputs.image || inputs.project }}" >> "$GITHUB_OUTPUT"
+
       - name: Build & push
         uses: docker/build-push-action@v6
         with:
@@ -45,8 +54,8 @@ jobs:
           file: ${{ inputs.dockerfile }}
           push: true
           tags: |
-            ghcr.io/d-corp/${{ inputs.project }}:latest
-            ghcr.io/d-corp/${{ inputs.project }}:${{ github.sha }}
+            ghcr.io/d-corp/${{ steps.vars.outputs.image }}:latest
+            ghcr.io/d-corp/${{ steps.vars.outputs.image }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
