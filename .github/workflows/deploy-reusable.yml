@@ -1,7 +1,9 @@
 # Workflow RÉUTILISABLE — à pousser dans le repo GitHub  d-corp/.github
 # chemin exact :  d-corp/.github  ->  .github/workflows/deploy-reusable.yml
 #
-# Écrit UNE fois, appelé par tous les projets. Build -> push ghcr -> deploy SSH.
+# Écrit UNE fois, appelé par tous les projets. Build -> push ghcr -> déploie
+# via un appel webhook HTTPS à la Docky Console (plus fiable qu'un SSH direct
+# sur le VPS, qui timeoutait parfois sur la connexion).
 name: Deploy (reusable)
 
 on:
@@ -59,10 +61,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Deploy (SSH)
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          script: /opt/docky/scripts/deploy.sh ${{ inputs.project }}
+      - name: Deploy (webhook)
+        run: |
+          curl -fsS --retry 3 --retry-delay 5 --max-time 300 \
+            -X POST "https://console.d-app.fr/api/deploy/${{ inputs.project }}" \
+            -H "Authorization: Bearer ${{ secrets.DEPLOY_WEBHOOK_SECRET }}"
