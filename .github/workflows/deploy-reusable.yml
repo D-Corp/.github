@@ -28,11 +28,15 @@ on:
         default: "."
 
 jobs:
-  build-and-deploy:
+  # Séparé du déploiement : un "Re-run failed jobs" sur un échec du webhook
+  # ne repasse plus par un rebuild+repush complet, seul `deploy` est rejoué.
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    outputs:
+      image: ${{ steps.vars.outputs.image }}
     steps:
       - uses: actions/checkout@v4
 
@@ -61,6 +65,10 @@ jobs:
           cache-from: type=gha,scope=${{ steps.vars.outputs.image }}
           cache-to: type=gha,mode=max,scope=${{ steps.vars.outputs.image }}
 
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
       - name: Deploy (webhook)
         run: |
           curl -fsS --retry 3 --retry-delay 5 --max-time 300 \
