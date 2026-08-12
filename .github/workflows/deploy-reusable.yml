@@ -65,10 +65,20 @@ jobs:
           cache-from: type=gha,scope=${{ steps.vars.outputs.image }}
           cache-to: type=gha,mode=max,scope=${{ steps.vars.outputs.image }}
 
-  # Crée un tag `deploy-<sha>` après le push ghcr : c'est cet event "create"
-  # (émis par l'infra GitHub, pas par le runner) qui déclenche le webhook
-  # GitHub natif reçu par la console, les runners ne pouvant plus joindre
-  # console.d-app.fr directement (blocage réseau sortant).
+  # Crée un tag `deploy::<projet>::<sha>` après le push ghcr : c'est cet event
+  # "create" (émis par l'infra GitHub, pas par le runner) qui déclenche le
+  # webhook GitHub natif reçu par la console, les runners ne pouvant plus
+  # joindre console.d-app.fr directement (blocage réseau sortant). Le format
+  # "deploy::<projet>::<sha>" encode le projet dans le tag lui-même : un seul
+  # webhook GitHub par repo suffit même pour un monorepo multi-services (ex.
+  # D-Mem : d-mem, d-mem-app, discord-ticket-bot partagent le même repo mais
+  # doivent déployer des stacks différentes) — la console résout le projet
+  # depuis le tag, pas depuis repository.name. Repli sur l'ancien format
+  # "deploy-<sha>" si `project` n'est pas renseigné (ne devrait pas arriver,
+  # `project` est `required: true`, mais évite un tag cassé "deploy::::<sha>").
+  # Le caller doit accorder `permissions: contents: write` (le plafond du
+  # GITHUB_TOKEN d'un appelant de reusable workflow est fixé par ses propres
+  # `permissions:`, pas par celles déclarées ici).
   tag:
     needs: build
     runs-on: ubuntu-latest
@@ -77,10 +87,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Crée et pousse le tag deploy-<sha>
+      - name: Crée et pousse le tag deploy
         run: |
-          git tag "deploy-${GITHUB_SHA}"
-          git push origin "deploy-${GITHUB_SHA}"
+          if [ -n "${{ inputs.project }}" ]; then
+            TAG="deploy::${{ inputs.project }}::${GITHUB_SHA}"
+          else
+            TAG="deploy-${GITHUB_SHA}"
+          fi
+          git tag "$TAG"
+          git push origin "$TAG"
 
   deploy:
     needs: build
