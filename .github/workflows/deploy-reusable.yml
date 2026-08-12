@@ -65,17 +65,22 @@ jobs:
           cache-from: type=gha,scope=${{ steps.vars.outputs.image }}
           cache-to: type=gha,mode=max,scope=${{ steps.vars.outputs.image }}
 
-  # Crée un tag `deploy::<projet>::<sha>` après le push ghcr : c'est cet event
+  # Crée un tag `deploy/<projet>/<sha>` après le push ghcr : c'est cet event
   # "create" (émis par l'infra GitHub, pas par le runner) qui déclenche le
   # webhook GitHub natif reçu par la console, les runners ne pouvant plus
   # joindre console.d-app.fr directement (blocage réseau sortant). Le format
-  # "deploy::<projet>::<sha>" encode le projet dans le tag lui-même : un seul
+  # "deploy/<projet>/<sha>" encode le projet dans le tag lui-même : un seul
   # webhook GitHub par repo suffit même pour un monorepo multi-services (ex.
   # D-Mem : d-mem, d-mem-app, discord-ticket-bot partagent le même repo mais
   # doivent déployer des stacks différentes) — la console résout le projet
   # depuis le tag, pas depuis repository.name. Repli sur l'ancien format
   # "deploy-<sha>" si `project` n'est pas renseigné (ne devrait pas arriver,
-  # `project` est `required: true`, mais évite un tag cassé "deploy::::<sha>").
+  # `project` est `required: true`, mais évite un tag cassé "deploy//<sha>").
+  # NB : le séparateur a d'abord été "::" (`deploy::<projet>::<sha>`), mais
+  # git-check-ref-format(1) interdit tout ':' dans un nom de tag — confirmé
+  # par un échec réel ("fatal: ... is not a valid tag name") sur les premiers
+  # repos migrés. "/" est un séparateur de hiérarchie de tag valide en Git,
+  # et sans ambiguïté puisque les noms de projet ne contiennent pas de "/".
   # Le caller doit accorder `permissions: contents: write` (le plafond du
   # GITHUB_TOKEN d'un appelant de reusable workflow est fixé par ses propres
   # `permissions:`, pas par celles déclarées ici).
@@ -90,7 +95,7 @@ jobs:
       - name: Crée et pousse le tag deploy
         run: |
           if [ -n "${{ inputs.project }}" ]; then
-            TAG="deploy::${{ inputs.project }}::${GITHUB_SHA}"
+            TAG="deploy/${{ inputs.project }}/${GITHUB_SHA}"
           else
             TAG="deploy-${GITHUB_SHA}"
           fi
