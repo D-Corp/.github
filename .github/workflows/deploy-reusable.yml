@@ -65,6 +65,23 @@ jobs:
           cache-from: type=gha,scope=${{ steps.vars.outputs.image }}
           cache-to: type=gha,mode=max,scope=${{ steps.vars.outputs.image }}
 
+  # Crée un tag `deploy-<sha>` après le push ghcr : c'est cet event "create"
+  # (émis par l'infra GitHub, pas par le runner) qui déclenche le webhook
+  # GitHub natif reçu par la console, les runners ne pouvant plus joindre
+  # console.d-app.fr directement (blocage réseau sortant).
+  tag:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Crée et pousse le tag deploy-<sha>
+        run: |
+          git tag "deploy-${GITHUB_SHA}"
+          git push origin "deploy-${GITHUB_SHA}"
+
   deploy:
     needs: build
     runs-on: ubuntu-latest
