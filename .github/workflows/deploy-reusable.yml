@@ -92,15 +92,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Crée et pousse le tag deploy
+      - name: Crée et pousse le tag deploy (idempotent)
         run: |
           if [ -n "${{ inputs.project }}" ]; then
             TAG="deploy/${{ inputs.project }}/${GITHUB_SHA}"
           else
             TAG="deploy-${GITHUB_SHA}"
           fi
-          git tag "$TAG"
-          git push origin "$TAG"
+
+          # Idempotence : sur un "Re-run failed jobs" (même GITHUB_SHA), ce
+          # tag existe déjà côté distant depuis le run précédent — un simple
+          # `git tag` + `git push` échouerait ("tag already exists" / push
+          # rejeté sans --force). On force la recréation locale (-f) puis le
+          # push en --force, mais UNIQUEMENT sur ce refspec de tag précis
+          # (jamais un --force générique sur d'autres refs), pour que le job
+          # reste rejouable sans intervention manuelle.
+          #
+          # ATTENTION, comportement attendu et PAS un bug : un force-push
+          # d'un tag qui existe déjà côté GitHub NE déclenche PAS d'event
+          # "create" — GitHub n'émet "create" que pour un tag/branche
+          # *nouveau* sur le remote, pas pour la mise à jour d'un tag
+          # existant. Donc sur un rerun avec le même sha, le webhook GitHub
+          # natif reçu par la console ne se redéclenche PAS et ce canal ne
+          # provoquera aucun redéploiement. C'est alors le job `deploy`
+          # ci-dessous (canal Bearer CI, appel direct à la console) qui reste
+          # la voie de déploiement fiable sur un rerun. Le tag/webhook ne
+          # redéclenche un déploiement via ce second canal que lors d'un run
+          # "propre" issu d'un nouveau commit (nouveau sha -> nouveau tag ->
+          # event "create" réellement émis par GitHub).
+          git tag -f "$TAG"
+          git push origin "$TAG" --force
 
   deploy:
     needs: build
