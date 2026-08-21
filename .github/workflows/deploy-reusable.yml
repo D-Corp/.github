@@ -31,7 +31,7 @@ jobs:
   # Séparé du déploiement : un "Re-run failed jobs" sur un échec du webhook
   # ne repasse plus par un rebuild+repush complet, seul `deploy` est rejoué.
   build:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docky]
     permissions:
       contents: read
       packages: write
