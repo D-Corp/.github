@@ -86,7 +86,7 @@ jobs:
   # `permissions:`, pas par celles déclarées ici).
   tag:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docky]
     permissions:
       contents: write
     steps:
@@ -125,7 +125,7 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docky]
     steps:
       - name: Deploy (webhook)
         run: |
