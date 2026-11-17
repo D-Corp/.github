@@ -47,7 +47,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Plafonne chaque build à 4 cœurs (sur 8) et le passe en priorité basse :
+      # jusqu'à 3 runners buildent en parallèle sur le VPS, il faut laisser
+      # du CPU aux services en prod (serveur FiveM surtout).
       - uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            cpu-period=100000
+            cpu-quota=400000
+            cpu-shares=512
 
       - name: Résout le nom d'image
         id: vars
