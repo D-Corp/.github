@@ -47,15 +47,33 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Plafonne chaque build à 4 cœurs (sur 8) et le passe en priorité basse :
-      # jusqu'à 3 runners buildent en parallèle sur le VPS, il faut laisser
-      # du CPU aux services en prod (serveur FiveM surtout).
-      - uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: |
-            cpu-period=100000
-            cpu-quota=400000
-            cpu-shares=512
+      # Builder buildx PERSISTANT, partagé par les 3 runners : ils pilotent tous
+      # le daemon Docker de l'hôte, donc le conteneur buildkit
+      # `buildx_buildkit_docky-builder0` (et son volume d'état, qui EST le cache
+      # de couches) survit d'un run à l'autre. Avant, setup-buildx-action créait
+      # un builder neuf à chaque run puis le supprimait : chaque build
+      # retéléchargeait ses couches depuis le cache GitHub Actions (~2 Mo/s,
+      # plusieurs minutes pour node_modules ou des assets lourds) puis les
+      # renvoyait. Si le builder existe déjà sur l'hôte, `buildx create` le
+      # réutilise au bootstrap au lieu d'en recréer un.
+      # Le cache est purgé par le GC par défaut de buildkit (seuils d'espace
+      # disque) ; `docker buildx prune --builder docky-builder` le vide à la main.
+      #
+      # Plafonné à 4 cœurs (sur 8) et en priorité basse : il faut laisser du CPU
+      # aux services en prod (serveur FiveM surtout). Le plafond vaut désormais
+      # pour l'ensemble des builds concurrents, plus pour chacun.
+      - name: Builder buildx persistant
+        run: |
+          if ! docker buildx inspect docky-builder >/dev/null 2>&1; then
+            docker buildx create --name docky-builder --driver docker-container \
+              --driver-opt cpu-period=100000 \
+              --driver-opt cpu-quota=400000 \
+              --driver-opt cpu-shares=512
+          fi
+          # Deux runners peuvent démarrer le même conteneur au même instant :
+          # le perdant de la course réessaie une fois le conteneur créé.
+          docker buildx inspect --bootstrap docky-builder \
+            || { sleep 5; docker buildx inspect --bootstrap docky-builder; }
 
       - name: Résout le nom d'image
         id: vars
@@ -64,14 +82,14 @@ jobs:
       - name: Build & push
         uses: docker/build-push-action@v6
         with:
+          builder: docky-builder
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
           push: true
           tags: |
             ghcr.io/d-corp/${{ steps.vars.outputs.image }}:latest
             ghcr.io/d-corp/${{ steps.vars.outputs.image }}:${{ github.sha }}
-          cache-from: type=gha,scope=${{ steps.vars.outputs.image }}
-          cache-to: type=gha,mode=max,scope=${{ steps.vars.outputs.image }}
+          # Pas de cache-from/cache-to : le cache est l'état du builder persistant.
 
   # Crée un tag `deploy/<projet>/<sha>` après le push ghcr : c'est cet event
   # "create" (émis par l'infra GitHub, pas par le runner) qui déclenche le
